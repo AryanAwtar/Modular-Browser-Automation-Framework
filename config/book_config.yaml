@@ -1,0 +1,33 @@
+project_name: "BooksScraper"
+base_url: "http://books.toscrape.com/"
+output_file: "outputs/books_data.csv"
+headless: false  # Set to true for background execution
+
+# Actions to perform before extraction (e.g., logging in, navigating menus)
+# For this example, we just wait for the container to load.
+setup_steps:
+  - action: "wait"
+    target: "css_selector"
+    selector: ".product_pod"
+    timeout: 10
+
+# Data Extraction Rules
+extraction:
+  container: "article.product_pod"  # The repeating element
+  fields:
+    title:
+      selector: "h3 a"
+      attribute: "title"  # Get attribute value instead of text
+    price:
+      selector: "p.price_color"
+      attribute: "text"
+    availability:
+      selector: "p.instock.availability"
+      attribute: "text"
+
+# Pagination Rules
+pagination:
+  enabled: true
+  max_pages: 3
+  next_button_selector: "li.next a"
+  type: "click"  # 'click' the button or 'scroll' (future impl)
