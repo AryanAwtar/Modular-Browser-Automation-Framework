@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Automation Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom scrollbar for log window */
+        .log-window::-webkit-scrollbar { width: 8px; }
+        .log-window::-webkit-scrollbar-track { background: #1f2937; }
+        .log-window::-webkit-scrollbar-thumb { background: #4b5563; border-radius: 4px; }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-100 font-sans min-h-screen">
+
+    <div class="container mx-auto p-6 max-w-7xl">
+        
+        <!-- Header -->
+        <div class="flex justify-between items-center mb-8">
+            <div>
+                <h1 class="text-3xl font-bold text-blue-400">Browser Automation Controller</h1>
+                <p class="text-gray-400">Modular Framework Dashboard</p>
+            </div>
+            <div id="status-badge" class="px-4 py-2 rounded-full bg-gray-700 text-sm font-semibold">
+                Checking Status...
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            
+            <!-- Left Column: Configuration -->
+            <div class="space-y-6">
+                <div class="bg-gray-800 rounded-lg p-6 shadow-lg border border-gray-700">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-xl font-semibold">Configuration (YAML)</h2>
+                        <button onclick="saveConfig()" class="bg-blue-600 hover:bg-blue-500 text-white px-3 py-1 rounded text-sm transition">
+                            Save Config
+                        </button>
+                    </div>
+                    <textarea id="config-editor" class="w-full h-96 bg-gray-900 text-green-400 font-mono text-sm p-4 rounded border border-gray-700 focus:outline-none focus:border-blue-500 resize-none" spellcheck="false"></textarea>
+                </div>
+
+                <div class="bg-gray-800 rounded-lg p-6 shadow-lg border border-gray-700">
+                    <h2 class="text-xl font-semibold mb-4">Actions</h2>
+                    <div class="flex gap-4">
+                        <button id="run-btn" onclick="startScraper()" class="flex-1 bg-green-600 hover:bg-green-500 text-white py-3 rounded font-bold shadow-lg transition flex justify-center items-center gap-2">
+                            <span>▶ Start Scraper</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Column: Logs & Results -->
+            <div class="space-y-6">
+                <!-- Logs -->
+                <div class="bg-gray-800 rounded-lg p-6 shadow-lg border border-gray-700 flex flex-col h-[500px]">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-xl font-semibold">Live Logs</h2>
+                        <span class="text-xs text-gray-500">Auto-refreshing</span>
+                    </div>
+                    <pre id="log-window" class="log-window flex-1 bg-black text-gray-300 font-mono text-xs p-4 rounded overflow-y-auto whitespace-pre-wrap leading-relaxed border border-gray-700"></pre>
+                </div>
+            </div>
+        </div>
+
+        <!-- Data Table Section -->
+        <div class="mt-8 bg-gray-800 rounded-lg p-6 shadow-lg border border-gray-700">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-semibold">Extracted Data</h2>
+                <button onclick="fetchData()" class="text-blue-400 hover:text-blue-300 text-sm">Refresh Data</button>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead class="bg-gray-700 text-gray-300 uppercase text-xs">
+                        <tr id="table-header">
+                            <th class="p-3">No Data</th>
+                        </tr>
+                    </thead>
+                    <tbody id="table-body" class="text-sm text-gray-400 divide-y divide-gray-700">
+                        <!-- JS renders rows here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        const API_URL = 'http://127.0.0.1:5000/api';
+        let isRunning = false;
+        let logInterval;
+
+        // --- Init ---
+        document.addEventListener('DOMContentLoaded', () => {
+            fetchConfig();
+            fetchStatus();
+            fetchData();
+            setInterval(fetchStatus, 2000); // Poll status every 2s
+            logInterval = setInterval(fetchLogs, 2000); // Poll logs every 2s
+        });
+
+        // --- API Calls ---
+
+        async function fetchConfig() {
+            try {
+                const res = await fetch(`${API_URL}/config`);
+                const data = await res.json();
+                document.getElementById('config-editor').value = data.config;
+            } catch (err) { console.error("Error fetching config", err); }
+        }
+
+        async function saveConfig() {
+            const config = document.getElementById('config-editor').value;
+            try {
+                const res = await fetch(`${API_URL}/config`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ config })
+                });
+                const data = await res.json();
+                if(data.status === 'success') alert("Configuration Saved!");
+                else alert("Error: " + data.message);
+            } catch (err) { alert("Failed to save config"); }
+        }
+
+        async function startScraper() {
+            try {
+                const res = await fetch(`${API_URL}/run`, { method: 'POST' });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    fetchStatus(); // Update UI immediately
+                } else {
+                    alert(data.message);
+                }
+            } catch (err) { alert("Failed to start scraper"); }
+        }
+
+        async function fetchStatus() {
+            try {
+                const res = await fetch(`${API_URL}/status`);
+                const data = await res.json();
+                
+                const badge = document.getElementById('status-badge');
+                const btn = document.getElementById('run-btn');
+
+                if (data.is_running) {
+                    badge.className = "px-4 py-2 rounded-full bg-yellow-600 text-white text-sm font-semibold animate-pulse";
+                    badge.innerText = "Running...";
+                    btn.disabled = true;
+                    btn.classList.add('opacity-50', 'cursor-not-allowed');
+                    btn.innerHTML = `<svg class="animate-spin h-5 w-5 mr-2 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg> Running...`;
+                } else {
+                    badge.className = "px-4 py-2 rounded-full bg-green-600 text-white text-sm font-semibold";
+                    badge.innerText = data.message === 'Idle' ? 'Ready' : data.message;
+                    btn.disabled = false;
+                    btn.classList.remove('opacity-50', 'cursor-not-allowed');
+                    btn.innerHTML = "▶ Start Scraper";
+                    
+                    // Refresh data if just finished
+                    if(isRunning === true && data.is_running === false) {
+                        fetchData();
+                    }
+                }
+                isRunning = data.is_running;
+            } catch (err) { console.error("Error fetching status", err); }
+        }
+
+        async function fetchLogs() {
+            try {
+                const res = await fetch(`${API_URL}/logs`);
+                const data = await res.json();
+                const logWindow = document.getElementById('log-window');
+                
+                // Only scroll if near bottom
+                const isScrolledToBottom = logWindow.scrollHeight - logWindow.clientHeight <= logWindow.scrollTop + 50;
+                
+                logWindow.innerText = data.logs;
+                
+                if(isScrolledToBottom) {
+                    logWindow.scrollTop = logWindow.scrollHeight;
+                }
+            } catch (err) { console.error("Error fetching logs", err); }
+        }
+
+        async function fetchData() {
+            try {
+                const res = await fetch(`${API_URL}/data`);
+                const json = await res.json();
+                
+                const thead = document.getElementById('table-header');
+                const tbody = document.getElementById('table-body');
+                
+                thead.innerHTML = '';
+                tbody.innerHTML = '';
+
+                if (json.data && json.data.length > 0) {
+                    // Headers
+                    let headerRow = '';
+                    json.columns.forEach(col => {
+                        headerRow += `<th class="p-3 bg-gray-700 sticky top-0">${col}</th>`;
+                    });
+                    thead.innerHTML = headerRow;
+
+                    // Rows (Limit to last 50 for performance)
+                    const rows = json.data.slice(-50).reverse(); 
+                    rows.forEach(row => {
+                        let tr = `<tr class="hover:bg-gray-700 transition">`;
+                        json.columns.forEach(col => {
+                            tr += `<td class="p-3 border-b border-gray-700 truncate max-w-xs" title="${row[col]}">${row[col] || '-'}</td>`;
+                        });
+                        tr += `</tr>`;
+                        tbody.innerHTML += tr;
+                    });
+                } else {
+                    tbody.innerHTML = `<tr><td colspan="100%" class="p-8 text-center text-gray-500">No data found yet. Run the scraper!</td></tr>`;
+                }
+            } catch (err) { console.error("Error fetching data", err); }
+        }
+    </script>
+</body>
+</html>
